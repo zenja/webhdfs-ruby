@@ -1,7 +1,7 @@
 WebHDFS-Ruby is a ruby library for accessing WebHDFS REST APIs
 
 In webhdfs.rb I used rest-client(require 'rest_client') for uploading files, 
-because for now (Ruby 1.9.3), the ruby library net/http do not support multipart/form-data itself
+because for now (Ruby 1.9.3), the ruby library net/http does not support multipart/form-data itself
 
 To install rest-client, run command:
 gem install rest-client
@@ -11,6 +11,6 @@ Ubuntu 11.10
 Ruby 1.9.3
 Hadoop 1.0.1
 
-Reference:
+References:
 WebHDFS REST API http://hadoop.apache.org/common/docs/r1.0.0/webhdfs.html
 webhdfs-py https://github.com/drelu/webhdfs-py/blob/master/webhdfs/webhdfs.py
