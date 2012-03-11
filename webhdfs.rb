@@ -68,7 +68,7 @@ class WebHDFS
     
     # upload the target file using rest-client
     begin
-      RestClient.put redirect_location, :myfile => File.new(source_path, 'r') #TODO: 'r' or 'rb' depends on file type?
+      RestClient.put redirect_location, :myfile => File.new(source_path, 'rb') # use 'rb' for both text or binary file
       return make_result(is_successful = true)
     rescue Exception => e
       return make_result(is_successful = false, 
