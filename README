@@ -9,6 +9,7 @@ gem install rest-client
 Development Environment:
 Ubuntu 11.10
 Ruby 1.9.3
+Hadoop 1.0.1
 
 Reference:
 WebHDFS REST API http://hadoop.apache.org/common/docs/r1.0.0/webhdfs.html
