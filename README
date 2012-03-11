@@ -5,3 +5,11 @@ because for now (Ruby 1.9.3), the ruby library net/http do not support multipart
 
 To install rest-client, run command:
 gem install rest-client
+
+Development Environment:
+Ubuntu 11.10
+Ruby 1.9.3
+
+Reference:
+WebHDFS REST API http://hadoop.apache.org/common/docs/r1.0.0/webhdfs.html
+webhdfs-py https://github.com/drelu/webhdfs-py/blob/master/webhdfs/webhdfs.py
