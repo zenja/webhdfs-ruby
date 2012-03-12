@@ -148,3 +148,15 @@ class WebHDFS
     result = {'is_successful' => is_successful, 'message' => message, 'body' => body}
   end
 end
+
+# ----- Examples -----
+# require './webhdfs.rb'
+# webhdfs = WebHDFS.new('localhost', 50070, 'wangxing')
+# dirname = '/testdir'
+# res = webhdfs.mkdir(dirname)
+# res = webhdfs.rmdir(dirname)
+# res = webhdfs.listdir('/')
+# res = webhdfs.copy_from_local('/etc/hosts', '/user/wangxing/hosts.txt')
+# res = webhdfs.rmdir('/user/wangxing/hosts.txt')
+# res = webhdfs.copy_to_local('/user/wangxing/emptyfile', '/home/wangxing/temp/testfile')
+# res = webhdfs.copy_to_local('/user/wangxing/input/core-site.xml', '/home/wangxing/temp/testxml')
