@@ -4,7 +4,7 @@
 *.DS_Store
 *.swp
 *.out
-
+.idea
 # temp file folder
 /temp
 
