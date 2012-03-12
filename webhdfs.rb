@@ -1,151 +1,119 @@
 require 'net/http'
 require 'json'
-require 'rest_client'
-require 'open-uri'
+require 'uri'
 
 class WebHDFS
-  WEBHDFS_CONTEXT_ROOT="/webhdfs/v1"
+  CONTEXT_ROOT="/webhdfs/v1"
+
+  attr_accessor :host, :port, :user, :address
 
   def initialize(namenode_host, namenode_port, hdfs_username)
-    @namenode_port = namenode_port
-    @namenode_host = namenode_host
-    @username = hdfs_username
-    @url_prefix = 'http://' + namenode_host + ':' + namenode_port.to_s
+    @port    = namenode_port
+    @host    = namenode_host
+    @user    = hdfs_username
+    @address = "http://#{@host}:#{@port}"
   end
-  
+
+  def listdir(path)
+    uri = generate_uri(path, 'op=LISTSTATUS')
+    req = Net::HTTP::Get.new(uri.request_uri)
+    res = do_request(req)
+    JSON.parse(res.body)
+  end
+
   def mkdir(path)
-    url_path = @url_prefix + WEBHDFS_CONTEXT_ROOT + path + '?op=MKDIRS&user.name=' + @username
-    uri = URI(url_path)
-    # Note: uri.path and uri.request_uri are different, 
-    # uri.request_uri is uri.path plus request params
+    uri = generate_uri(path, 'op=MKDIRS')
     req = Net::HTTP::Put.new(uri.request_uri)
-
-    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-      http.request(req)
-    end
-
-    case res
-    when Net::HTTPSuccess, Net::HTTPRedirection
-      return make_result(is_successful = true, message = '', body = JSON.parse(res.body))
-    else
-      return make_result(is_successful = false, message = '', body = JSON.parse(res.body))
-    end
+    do_request(req)
   end
 
   def rmdir(path)
-    url_path = @url_prefix + WEBHDFS_CONTEXT_ROOT + path + '?op=DELETE&recursive=true&user.name=' + @username
-    uri = URI(url_path)
-    # Note: uri.path and uri.request_uri are different, 
-    # uri.request_uri is uri.path plus request params
+    uri = generate_uri(path, 'op=DELETE&recursive=true')
     req = Net::HTTP::Delete.new(uri.request_uri)
-
-    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-      http.request(req)
-    end
-
-    case res
-    when Net::HTTPSuccess, Net::HTTPRedirection
-      return make_result(is_successful = true, message = '', body = JSON.parse(res.body))
-    else
-      return make_result(is_successful = false, message = '', body = JSON.parse(res.body))
-    end
+    do_request(req)
   end
 
-  def copy_from_local(source_path, target_path, replication=1)
-    url_path = @url_prefix + WEBHDFS_CONTEXT_ROOT + target_path + '?op=CREATE&overwrite=true&user.name=' + @username
-    uri = URI(url_path)
-    # Note: uri.path and uri.request_uri are different, 
-    # uri.request_uri is uri.path plus request params
+  def copy_from_local(source_path, target_path, replication=false)
+    uri = generate_uri(target_path, 'op=CREATE&overwrite=true')
     req = Net::HTTP::Put.new(uri.request_uri)
+    res = do_request(req)
 
-    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-      http.request(req)
-    end
-
-    return make_result(is_successful = false, body = {}) if res.class != Net::HTTPTemporaryRedirect 
-
-    redirect_location = res['location']
-    puts redirect_location #debug
-    
-    # upload the target file using rest-client
+    raise "Error while creating file, reditect not received" unless res.class == Net::HTTPTemporaryRedirect
+    location          = URI(res['location'])
+    location.hostname = host
     begin
-      RestClient.put redirect_location, :myfile => File.new(source_path, 'rb') # use 'rb' for both text or binary file
-      return make_result(is_successful = true)
-    rescue Exception => e
-      return make_result(is_successful = false, 
-                         message = "Error when trying to upload the file #{source_path} to #{redirect_location}", 
-                         body = {})
+      req                      = Net::HTTP::Put.new(location.request_uri)
+      req['Content-Type']      = 'application/octet-stream'
+      req['Transfer-Encoding'] = 'chunked'
+      req.body_stream          = File.open(File.expand_path source_path)
+      do_request(req, location.hostname, location.port)
+    rescue => e
+      raise "Error while trying to upload file #{source_path} to #{location}:\n#{e.message}"
     end
   end
 
   def copy_to_local(source_path, target_path)
-    url_path = @url_prefix + WEBHDFS_CONTEXT_ROOT + source_path + '?op=OPEN&user.name=' + @username
-    uri = URI(url_path)
-    # Note: uri.path and uri.request_uri are different, 
-    # uri.request_uri is uri.path plus request params
-    req = Net::HTTP::Get.new(uri.request_uri)
+    uri      = generate_uri(source_path, 'op=OPEN')
+    req      = Net::HTTP::Get.new(uri.request_uri)
+    res      = do_request(req)
+    location = URI(res['location'])
 
-    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-      http.request(req)
-    end
+    location.hostname = host
 
-    if (res.class != Net::HTTPTemporaryRedirect) && (res.class != Net::HTTPForbidden) then
-      return make_result(is_successful = false, 
-                       message = "response type is #{res.class.to_s} insdead of Net::HTTPTemporaryRedirect", 
-                       body = {})
-    # if target file is empty, we will get a Net::HTTPForbidden
-    elsif res.class == Net::HTTPForbidden then
+    if (res.class != Net::HTTPTemporaryRedirect) && (res.class != Net::HTTPForbidden)
+      raise "Response type is #{res.class} instead of Net::HTTPTemporaryRedirect"
+    elsif res.class == Net::HTTPForbidden
       begin
-        # create an empty file
         emptyfile = File.new(target_path, 'w')
-        return make_result(is_successful = true)
+        return
       rescue
-        return make_result(is_successful = false, message = "Error when creating empty file #{target_path}")
+        raise "Error while creating empty file #{target_path}:\n#{e.message}"
       ensure
         emptyfile.close
       end
     end
 
-    redirect_location = res['location']
-
-    # download file
     begin
-      File.open(target_path, "wb") do |saved_file|
-        # the following "open" is provided by open-uri
-        open(redirect_location) do |read_file|
-          saved_file.write(read_file.read)
+      file = File.open(target_path, "wb")
+      req  = Net::HTTP::Get.new(location.request_uri)
+
+      Net::HTTP.start(location.hostname, location.port) do |http|
+        http.request(req) do |res|
+          assert_response(res)
+          res.read_body { |chunk| file << chunk }
         end
       end
-      return make_result(is_successful = true, message = "HDFS file #{source_path} downloaded")
-    rescue Exception => e
-      return make_result(is_successful = false, 
-                         message = "Error when downloading file from #{redirect_location}. Msg: #{e.message}")
-    end
-  end
-
-  def listdir(path)
-    url_path = @url_prefix + WEBHDFS_CONTEXT_ROOT + path + '?op=LISTSTATUS&user.name=' + @username
-    uri = URI(url_path)
-    # Note: uri.path and uri.request_uri are different, 
-    # uri.request_uri is uri.path plus request params
-    req = Net::HTTP::Get.new(uri.request_uri)
-
-    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-      http.request(req)
-    end
-
-    case res
-    when Net::HTTPSuccess, Net::HTTPRedirection
-      return make_result(is_successful = true, message = '', body = JSON.parse(res.body))
-    else
-      return make_result(is_successful = false, message = '', body = JSON.parse(res.body))
+    rescue => e
+      raise "Error while downloading file from #{location}:\n#{e.message}"
+    ensure
+      file.close
     end
   end
 
   private
 
-  def make_result(is_successful, message="", body={})
-    result = {'is_successful' => is_successful, 'message' => message, 'body' => body}
+  def generate_uri(path, params)
+    URI("#{address + CONTEXT_ROOT + path}?#{params}&user.name=#{user}")
+  end
+
+  def do_request(req, h=host, p=port)
+    res = Net::HTTP.new(h, p).request(req)
+    assert_response(res)
+  end
+
+  def assert_response(res)
+    case res
+    when Net::HTTPNotFound then
+      raise "Resource not found: #{JSON.parse(res.body)}"
+    when Net::HTTPBadRequest then
+      raise "Invalid request: #{JSON.parse(res.body)}"
+    when Net::HTTPConflict then
+      raise "Conflict error: #{JSON.parse(res.body)}"
+    when Net::HTTPForbidden then
+      raise "Not allowed: #{JSON.parse(res.body)}"
+    else
+      res
+    end
   end
 end
 
