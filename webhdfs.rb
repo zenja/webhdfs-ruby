@@ -38,7 +38,7 @@ class WebHDFS
     req = Net::HTTP::Put.new(uri.request_uri)
     res = do_request(req)
 
-    raise "Error while creating file, reditect not received" unless res.class == Net::HTTPTemporaryRedirect
+    raise "Error while creating file, redirect not received" unless res.class == Net::HTTPTemporaryRedirect
     location          = URI(res['location'])
     location.hostname = host
     begin
